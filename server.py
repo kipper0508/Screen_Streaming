@@ -140,11 +140,13 @@ class Users():
 
     def create_user(self):
         try:
-            with open('users.json') as data_file:    
+            with open('users.json','r') as data_file:    
                 old_data = json.load(data_file)
         except:
-            with open('users.json','w+').write("{ }") as data_file:
-                old_data = json.load(data_file)
+            open('users.json','w+').write("{ }")
+        
+        with open('users.json','r') as data_file:
+            old_data = json.load(data_file)
         name = self.account.get()
         pwd = self.password.get()
         if name=="" or pwd=="":
