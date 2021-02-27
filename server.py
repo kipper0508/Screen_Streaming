@@ -12,28 +12,46 @@ import inspect
 import ctypes
 from tkinter import messagebox
 import tkinter.font as tkFont
+from goto import with_goto
 
 class Handler(BaseRequestHandler):
+    @with_goto
     def handle(self):
 
         user_list = open('users.json')
         users = json.load(user_list)
         global client_count
         global desk
-        
-        while 1:
+
+        login_time=0
+        while(login_time<5):
             try:
                 user_name = self.request.recv(1024).decode()
-                pwd = self.request.recv(1024).decode()
-                if(users[user_name]== pwd):
-                    user_list.close()
-                    break
+                #print(user_name)
             except:
-                break
-        
+                goto .end
+            pwd = self.request.recv(1024).decode()
+            if(user_name in users):
+                if(users[user_name] ==pwd):
+                    user_list.close()
+                    self.request.send(b'AuthOK')
+                    goto .begin
+                else:
+                    login_time += 1
+                    self.request.send(b'AuthNN')
+                    continue
+            else:
+                login_time += 1
+                self.request.send(b'AuthNN')
+                continue
+
+        goto .end
+
+        label .begin
+
         client_count += 1
         desk.status.update_client()
-
+    
         while 1:
             image = ImageGrab.grab()
             image = cv2.cvtColor(numpy.asarray(image),cv2.COLOR_RGB2BGR)
@@ -48,6 +66,8 @@ class Handler(BaseRequestHandler):
                 desk.status.update_client()
                 #self.request.close()
                 break
+        
+        label .end
 
 class basedesk():
     def __init__(self,master):
