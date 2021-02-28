@@ -6,6 +6,8 @@ import json
 import hashlib
 from PIL import ImageGrab
 import os
+import sys 
+import trace
 import threading
 import tkinter as tk
 import inspect
@@ -13,6 +15,38 @@ import ctypes
 from tkinter import messagebox
 import tkinter.font as tkFont
 from goto import with_goto
+import queue
+
+class thread_with_trace(threading.Thread): 
+    def __init__(self, *args, **keywords): 
+        threading.Thread.__init__(self, *args, **keywords)
+        threading.Thread.setDaemon(self,True)
+        self.killed = False
+  
+    def start(self): 
+        self.__run_backup = self.run 
+        self.run = self.__run       
+        threading.Thread.start(self) 
+  
+    def __run(self): 
+        sys.settrace(self.globaltrace) 
+        self.__run_backup() 
+        self.run = self.__run_backup 
+  
+    def globaltrace(self, frame, event, arg): 
+        if event == 'call': 
+            return self.localtrace 
+        else: 
+            return None
+  
+    def localtrace(self, frame, event, arg): 
+        if self.killed: 
+            if event == 'line': 
+                raise SystemExit() 
+        return self.localtrace 
+  
+    def kill(self): 
+        self.killed = True
 
 class Handler(BaseRequestHandler):
     @with_goto
@@ -51,16 +85,26 @@ class Handler(BaseRequestHandler):
 
         client_count += 1
         desk.status.update_client()
-    
+
+        encodert = thread_with_trace(target = encoder)
+        encodert.start()
+
+        global mutex
+        global q
+
         while 1:
-            image = ImageGrab.grab()
-            image = cv2.cvtColor(numpy.asarray(image),cv2.COLOR_RGB2BGR)
-            result, imgencode = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY),100])
-            data = numpy.array(imgencode)
-            stringData = data.tostring()
             try:
-                self.request.send( str(len(stringData)).ljust(16).encode())
-                self.request.send( stringData )
+                mutex.acquire()
+                if(q.empty()):
+                    #print("empty")
+                    mutex.release()
+                    continue
+                else:
+                    #print("send")
+                    stringData = q.get()
+                    mutex.release()
+                    self.request.send( str(len(stringData)).ljust(16).encode())
+                    self.request.send( stringData )
             except:
                 client_count -= 1
                 desk.status.update_client()
@@ -68,6 +112,8 @@ class Handler(BaseRequestHandler):
                 break
         
         label .end
+        encodert.kill()
+        encodert.join()
 
 class basedesk():
     def __init__(self,master):
@@ -182,6 +228,25 @@ class Users():
             self.MessageWindow("Create User", "Create User Finish!")
 
 
+def encoder():
+    global mutex
+    global q
+    while 1:
+        mutex.acquire()
+        if(q.full()):
+            mutex.release()
+            continue
+        else:
+            mutex.release()
+            image = ImageGrab.grab()
+            image = cv2.cvtColor(numpy.asarray(image),cv2.COLOR_RGB2BGR)
+            result, imgencode = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY),100])
+            data = numpy.array(imgencode)
+            stringData = data.tostring()
+            mutex.acquire()
+            q.put(stringData)
+            mutex.release()
+
 def serve():
     server = ThreadingTCPServer(ADDR,Handler)
     server.serve_forever()
@@ -200,6 +265,8 @@ TCP_IP = "localhost"
 TCP_PORT = 8002
 client_count = 0
 desk = None
+mutex = threading.Lock()
+q = queue.Queue(maxsize=10)
 ADDR=(TCP_IP,TCP_PORT)
 service = threading.Thread(target = serve)
 service.setDaemon(True)#if main end(gui terminate), this thread will terminate, too.

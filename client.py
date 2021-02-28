@@ -2,6 +2,8 @@ import socket
 import cv2
 import numpy
 import hashlib
+import sys 
+import trace
 import threading
 import tkinter as tk
 import inspect
@@ -9,6 +11,38 @@ import ctypes
 from tkinter import messagebox
 import tkinter.font as tkFont
 import time
+import queue
+
+class thread_with_trace(threading.Thread): 
+    def __init__(self, *args, **keywords): 
+        threading.Thread.__init__(self, *args, **keywords)
+        threading.Thread.setDaemon(self,True)
+        self.killed = False
+  
+    def start(self): 
+        self.__run_backup = self.run 
+        self.run = self.__run       
+        threading.Thread.start(self) 
+  
+    def __run(self): 
+        sys.settrace(self.globaltrace) 
+        self.__run_backup() 
+        self.run = self.__run_backup 
+  
+    def globaltrace(self, frame, event, arg): 
+        if event == 'call': 
+            return self.localtrace 
+        else: 
+            return None
+  
+    def localtrace(self, frame, event, arg): 
+        if self.killed: 
+            if event == 'line': 
+                raise SystemExit() 
+        return self.localtrace 
+  
+    def kill(self): 
+        self.killed = True
 
 def recvall(sock, count):
     buf = b''
@@ -19,20 +53,50 @@ def recvall(sock, count):
         count -= len(newbuf)
     return buf
 
+def reciver():
+    global q
+    global mutex
+    while 1:
+        mutex.acquire()
+        if(q.full()):
+            mutex.release()
+            continue
+        else:
+            mutex.release()
+            length = recvall(sock,16)
+            stringData = recvall(sock, int(length))
+            mutex.acquire()
+            q.put(length)
+            q.put(stringData)
+            mutex.release()
+    
 def video_catch():
     cv2.namedWindow("CLIENT2",0)
     global sock
+    global q
+    global mutex
+
+    recivert = thread_with_trace(target = reciver)
+    recivert.start()
 
     while 1:
-        length = recvall(sock,16)
-        stringData = recvall(sock, int(length))
-        data = numpy.fromstring(stringData, dtype='uint8')
-        decimg=cv2.imdecode(data,cv2.IMREAD_COLOR)
+        mutex.acquire()
+        if(q.empty()):
+            mutex.release()
+            continue
+        else:
+            length = q.get()
+            stringData = q.get()
+            mutex.release()
+            data = numpy.fromstring(stringData, dtype='uint8')
+            decimg=cv2.imdecode(data,cv2.IMREAD_COLOR)
         
-        cv2.imshow('CLIENT2',decimg)
-        cv2.waitKey(1)
+            cv2.imshow('CLIENT2',decimg)
+            cv2.waitKey(1)
 
     sock.close()
+    recivert.kill()
+    recivert.join()
     cv2.destroyAllWindows()
 
 class MessageWindow(tk.Toplevel):
@@ -118,6 +182,9 @@ class Auth():
         Video_Player(self.master)
     
     def disconnect(self):
+        global sock
+        sock.close()
+        sock = None
         self.Auth.destroy()
         Connect(self.master)
         MessageWindow("Inform", "Please reconnect!")
@@ -140,8 +207,6 @@ class Auth():
         else:
             self.login_time+=1
             if(self.login_time>=5):
-                sock.close()
-                sock = None
                 self.disconnect()
             else:
                 MessageWindow("Inform", "Wrong!")
@@ -153,14 +218,26 @@ class Video_Player():
         self.master.config()
         self.Video_Player = tk.Frame(self.master,)
         self.Video_Player.grid()
-        self.btn = tk.Button(self.Video_Player, height=3, width=10, text="disconnect", command=None)
+        self.btn = tk.Button(self.Video_Player, height=3, width=10, text="disconnect", command=self.destroy)
         self.btn.grid(row=0, column=0,padx=(275), pady=(200))
-        video_capture = threading.Thread(target = video_catch)
-        video_capture.setDaemon(True)
-        video_capture.start()
+        self.video_capture = thread_with_trace(target = video_catch)
+        #self.video_capture.setDaemon(True) //I put this in thread_with_trace class inits
+        self.video_capture.start()
 
-    #def disconnect():
+    def disconnect(self):
+        global sock
+        sock.close()
+        sock = None
+        self.Video_Player.destroy()
+        Connect(self.master)
+        MessageWindow("Inform", "Please reconnect!")
 
+    def destroy(self):
+        self.video_capture.kill()
+        self.video_capture.join()
+        self.disconnect()
+
+        
 def exit_function():
     global sock
     if sock:
@@ -168,6 +245,8 @@ def exit_function():
     exit()
 
 sock = None
+mutex = threading.Lock()
+q = queue.Queue(maxsize=20)
 root = tk.Tk()
 basedesk(root)
 root.protocol('WM_DELETE_WINDOW', exit_function)
