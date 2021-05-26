@@ -76,9 +76,6 @@ def video_catch():
     global q
     global mutex
 
-    recivert = thread_with_trace(target = reciver)
-    recivert.start()
-
     while 1:
         mutex.acquire()
         if(q.empty()):
@@ -88,16 +85,12 @@ def video_catch():
             length = q.get()
             stringData = q.get()
             mutex.release()
+
             data = numpy.fromstring(stringData, dtype='uint8')
             decimg=cv2.imdecode(data,cv2.IMREAD_COLOR)
-        
+            
             cv2.imshow('CLIENT2',decimg)
             cv2.waitKey(1)
-
-    sock.close()
-    recivert.kill()
-    recivert.join()
-    cv2.destroyAllWindows()
 
 class MessageWindow(tk.Toplevel):
         def __init__(self, title, message):
@@ -151,7 +144,7 @@ class Connect():
             TCP_PORT = 8002
             global sock
             sock = socket.socket()
-            sock.settimeout(1)
+            sock.settimeout(5)
             try:
                 sock.connect((TCP_IP, TCP_PORT))
                 self.delete()
@@ -221,13 +214,18 @@ class Video_Player():
         self.btn = tk.Button(self.Video_Player, height=3, width=10, text="disconnect", command=self.destroy)
         self.btn.grid(row=0, column=0,padx=(275), pady=(200))
         self.video_capture = thread_with_trace(target = video_catch)
-        #self.video_capture.setDaemon(True) //I put this in thread_with_trace class inits
         self.video_capture.start()
+        self.data_reciver = thread_with_trace(target = reciver)
+        self.data_reciver.start()
 
-    def disconnect(self):
+    def disconnect(self):#bug 重連無畫面
         global sock
+        global q
+        global mutex
         sock.close()
         sock = None
+        q.queue.clear()
+        #mutex.release()
         self.Video_Player.destroy()
         Connect(self.master)
         MessageWindow("Inform", "Please reconnect!")
@@ -235,6 +233,9 @@ class Video_Player():
     def destroy(self):
         self.video_capture.kill()
         self.video_capture.join()
+        self.data_reciver.kill()
+        self.data_reciver.join()
+        cv2.destroyAllWindows()
         self.disconnect()
 
         
@@ -242,7 +243,7 @@ def exit_function():
     global sock
     if sock:
         sock.close() 
-    exit()
+    sys.exit()
 
 sock = None
 mutex = threading.Lock()

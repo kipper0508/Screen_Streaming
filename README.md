@@ -1,10 +1,20 @@
-* This project can streaming sever's screen to muti-clients
+* This project is a screen streaming application💻
 
-* default port is 8002
+* Server🎞
+    * Support Multiple Users👨‍👨‍👦
+    * Using IP Address to Connect🌐
+        1. Default Port is 8002
+        2. Using TCP Protocol 
+    * Two Pages with Different Features🔧
+        1. Status : Show how many Clients are Connected
+        2. Users : Create a new User
+    * Using Hash to Protect Password🔒
 
-* sever has GUI 
-    1. Status : show how many clients there are
-    2. Users : create new user
+* Client📺
+    * Using GUI to Connect your Server🌐
+    * Login with your Account🧍
+    * Watching Server's Screen Stream▶
 
-* client will have it's GUI ASAP
+* NOTICE⚠️
+    * Make Sure your Antivirus Software Allow this to execute⛔
 

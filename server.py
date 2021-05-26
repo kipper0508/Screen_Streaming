@@ -4,7 +4,7 @@ import cv2
 import numpy
 import json
 import hashlib
-from PIL import ImageGrab
+from PIL import Image
 import os
 import sys 
 import trace
@@ -16,6 +16,8 @@ from tkinter import messagebox
 import tkinter.font as tkFont
 from goto import with_goto
 import queue
+import time
+from mss import mss
 
 class thread_with_trace(threading.Thread): 
     def __init__(self, *args, **keywords): 
@@ -227,7 +229,12 @@ class Users():
             self.reset_Text()
             self.MessageWindow("Create User", "Create User Finish!")
 
-
+def capture_screenshot():
+    with mss() as sct:
+        monitor = sct.monitors[1]
+        sct_img = sct.grab(monitor)
+        return Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
+    
 def encoder():
     global mutex
     global q
@@ -238,11 +245,12 @@ def encoder():
             continue
         else:
             mutex.release()
-            image = ImageGrab.grab()
+            image = capture_screenshot()
             image = cv2.cvtColor(numpy.asarray(image),cv2.COLOR_RGB2BGR)
-            result, imgencode = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY),100])
+            result, imgencode = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY),70])
             data = numpy.array(imgencode)
             stringData = data.tostring()
+
             mutex.acquire()
             q.put(stringData)
             mutex.release()
@@ -259,9 +267,9 @@ def page():
     root.mainloop()
 
 def exit_function(): 
-    exit() # exit gui thread and main will end
+    sys.exit() # exit gui thread and main will end
 
-TCP_IP = "localhost"
+TCP_IP = ''
 TCP_PORT = 8002
 client_count = 0
 desk = None
